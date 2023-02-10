@@ -1,48 +1,6 @@
 # SeqFormer: Sequential Transformer for Video Instance Segmentation
 
-
-News:
-SeqFormer is accepted as a paper for an **oral** presentation at **ECCV’2022**!
-
-A revised detectron2 version of SeqFormer, which supports multi-card training and inference, and supports inference by clip-matching manner, can be found here: [VNext](https://github.com/wjf5203/VNext)
-
-
-
-## SeqFormer
-
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/seqformer-a-frustratingly-simple-model-for/video-instance-segmentation-on-youtube-vis-1)](https://paperswithcode.com/sota/video-instance-segmentation-on-youtube-vis-1?p=seqformer-a-frustratingly-simple-model-for)
-
-
-
-<p align="center"><img src="assets/sota.png" width="500"/></p>
-
-> [**SeqFormer: Sequential Transformer for Video Instance Segmentation**](https://arxiv.org/abs/2112.08275)
->
-> Junfeng Wu, Yi Jiang, Song Bai, Wenqing Zhang, Xiang Bai
->
-
-
-
-
-#### Abstract
-
-In this work, we present SeqFormer, a frustratingly simple model for video instance segmentation. SeqFormer follows the principle of vision transformer that models instance relationships among video frames. Nevertheless, we observe that a stand-alone instance query suffices for capturing a time sequence of instances in a video, but attention mechanisms should be done with each frame independently. To achieve this, SeqFormer locates an instance in each frame and aggregates temporal information to learn a powerful representation of a video-level instance, which is used to predict the mask sequences on each frame dynamically. Instance tracking is achieved naturally without tracking branches or post-processing. On the YouTube-VIS dataset, SeqFormer achieves 47.4 AP with a ResNet-50 backbone and 49.0 AP with a ResNet-101 backbone without bells and whistles. Such achievement significantly exceeds the previous state-of-the-art performance by 4.6 and 4.4, respectively. In addition, integrated with the recently-proposed Swin transformer, SeqFormer achieves a much higher AP of 59.3. We hope SeqFormer could be a strong baseline that fosters future research in video instance segmentation, and in the meantime, advances this field with a more robust, accurate, neat model.
-
-
-
-<p align="center"><img src="assets/SeqFormer_arch.png" width="1000"/></p>
-
-
-
-#### Visualization results on YouTube-VIS 2019 valid set
-
-### 
-
-<img src="assets/vid_15.gif" width="400"/><img src="assets/vid_78.gif" width="400"/>
-<img src="assets/vid_133.gif" width="400"/><img src="assets/vid_210.gif" width="400"/>
-
-
-
+Currently manipulating SeqFormer to do video action detection on AVA.
 
 
 ### Installation
@@ -56,7 +14,7 @@ git clone https://github.com/wjf5203/SeqFormer.git
 Then, install PyTorch 1.7 and torchvision 0.8:
 
 ```bash
-conda install pytorch==1.7.1 torchvision==0.8.2 torchaudio==0.7.2 -c pytorch
+pip install pytorch==1.7.1+cu111 torchvision==0.8.2 torchaudio==0.7.2 -c pytorch
 ```
 
 Install dependencies and pycocotools for VIS:
@@ -75,29 +33,23 @@ sh ./make.sh
 python test.py
 ```
 
-
+Also, use jinsingsangsung docker.
 
 ### Data Preparation
 
-Download and extract 2019 version of YoutubeVIS train and val images with annotations from [CodeLab](https://competitions.codalab.org/competitions/20128#participate-get_data) or [YouTubeVIS](https://youtube-vos.org/dataset/vis/), and download COCO 2017 datasets. We expect the directory structure to be the following:
-
 ```
 SeqFormer
-├── datasets
-│   ├── coco_keepfor_ytvis19.json
+├── ...
 ...
-ytvis
-├── train
-├── val
-├── annotations
-│   ├── instances_train_sub.json
-│   ├── instances_val_sub.json
-coco
-├── train2017
-├── val2017
-├── annotations
-│   ├── instances_train2017.json
-│   ├── instances_val2017.json
+datasets
+├── frames
+│   ├── zlVkeKC6Ha8
+│   ...
+assets
+├── ava_frame_resolution.json
+├── ava_included_timestamps_v2.1.txt
+├── ...
+
 ```
 
 
