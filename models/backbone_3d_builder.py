@@ -75,10 +75,10 @@ class Backbone(nn.Module):
             xs = self.body(tensor_list.tensors) #interm layer features
             # xs_orig = xs
         # if self.ds: xs = self.avg_pool(xs)
-        print(xs['0'].shape)
-        print(xs['1'].shape)
-        print(xs['2'].shape)
-        print(xs['3'].shape)
+        # print(xs['0'].shape)
+        # print(xs['1'].shape)
+        # print(xs['2'].shape)
+        # print(xs['3'].shape)
         # bs, ch, t, w, h = xs.shape
         # if self.ds:
         #     if self.temporal_ds_strategy == 'avg' or self.temporal_ds_strategy == 'max':

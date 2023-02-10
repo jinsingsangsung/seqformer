@@ -505,6 +505,30 @@ def init_distributed_mode(args):
     torch.distributed.barrier()
     setup_for_distributed(args.rank == 0)
 
+@torch.no_grad()
+def accuracy_sigmoid(output, target):
+    """Computes the precision@k for the specified values of k"""
+    if target.numel() == 0:
+        return [torch.zeros([], device=output.device)]
+    #print('target',target.shape)
+    res = []
+
+    k = 0
+    for n in range(target.shape[0]):
+        t = target[n,:]
+
+        labels = t.nonzero().t()[0]
+
+        maxk = len(labels)
+
+        _, pred = output[n,:].topk(maxk, 0, True, True)
+
+        if set(labels.tolist()) == set(pred.tolist()):
+            k +=1
+
+    res.append(k*(100.0 / target.shape[0]))
+    return res
+
 
 @torch.no_grad()
 def accuracy(output, target, topk=(1,)):
@@ -562,3 +586,70 @@ def inverse_sigmoid(x, eps=1e-5):
     return torch.log(x1/x2)
 
 
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+
+def calculate_mAP(output, target):
+    import torchnet.meter as meter
+    mtr = meter.mAPMeter()
+    mtr.add(output, target)
+    ap = mtr.value()
+    return ap
+
+def build_log_dir(cfg):
+    # create base log directory
+    if cfg.exp_name == 'use_time':
+        cfg.exp_name = time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime(time.time()))
+    log_path = os.path.join(cfg.output_dir, cfg.exp_name)
+    if not os.path.exists(log_path):
+        os.makedirs(log_path)
+
+    # dump config file
+    # with open(os.path.join(log_path, 'config.yaml'), 'w') as f:
+    #     f.write(cfg.dump())
+
+    # create tensorboard saving directory
+    tb_logdir = os.path.join(log_path, cfg.log_output_dir)
+    if not os.path.exists(tb_logdir):
+        os.makedirs(tb_logdir)
+
+    # create checkpoint saving directory
+    ckpt_logdir = os.path.join(log_path, cfg.output_dir)
+    if not os.path.exists(ckpt_logdir):
+        os.makedirs(ckpt_logdir)
+
+    return tb_logdir
+
+
+def read_labelmap(labelmap_file):
+    """Read label map and class ids."""
+
+    labelmap = []
+    class_ids = set()
+    name = ""
+    class_id = ""
+    with open(labelmap_file, 'r') as f:
+        for line in f:
+            if line.startswith("  name:"):
+                name = line.split('"')[1]
+            elif line.startswith("  id:") or line.startswith("  label_id:"):
+                class_id = int(line.strip().split(" ")[-1])
+                labelmap.append({"id": class_id, "name": name})
+                class_ids.add(class_id)
+    return labelmap, class_ids

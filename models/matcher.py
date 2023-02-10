@@ -108,7 +108,7 @@ class HungarianMatcherAVA(nn.Module):
         assert cost_class != 0 or cost_bbox != 0 or cost_giou != 0, "all costs cant be 0"
 
     @torch.no_grad()
-    def forward(self, outputs, targets, nf, valid_ratios):
+    def forward(self, outputs, targets):
         """ Performs the matching
 
         Params:
@@ -132,20 +132,21 @@ class HungarianMatcherAVA(nn.Module):
         bs, num_queries = outputs["pred_logits"].shape[:2]
 
         out_bbox = outputs["pred_boxes"].flatten(0, 1)
+        out_prob = outputs["pred_logits"].flatten(0, 1).softmax(-1)
+
         tgt_ids = torch.cat([v["labels"] for v in targets])
         # Also concat the target labels
         tgt_bbox = torch.cat([v["boxes"] for v in targets])
-        print("tgt_ids.shape", tgt_ids.shape)
-        print("tgt_bbox.shape", tgt_bbox.shape)
         tgt_bbox = tgt_bbox[:,1:]
+
         # Compute the L1 cost between boxes
         cost_bbox = torch.cdist(out_bbox, tgt_bbox, p=1)
 
         # Compute the giou cost betwen boxes
         cost_giou = -generalized_box_iou(box_cxcywh_to_xyxy(out_bbox), box_cxcywh_to_xyxy(tgt_bbox))
 
-        # out_prob = outputs["pred_logits_b"].flatten(0, 1).softmax(-1)
-        # cost_class = -out_prob[:, 1:2].repeat(1, len(tgt_bbox))
+        
+        cost_class = -out_prob[:, 1:2].repeat(1, len(tgt_bbox))
 
         # Final cost matrix
         C = self.cost_bbox * cost_bbox + self.cost_class * cost_class + self.cost_giou * cost_giou

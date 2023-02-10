@@ -16,11 +16,12 @@ from pathlib import Path
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+from tensorboardX import SummaryWriter
 import datasets
 import util.misc as utils
 import datasets.samplers as samplers
 from datasets import build_dataset, get_coco_api_from_dataset
-from engine import evaluate, train_one_epoch
+from engine import evaluate, train_one_epoch, validate_ava_detection
 from models import build_model
 
 
@@ -39,8 +40,11 @@ def get_args_parser():
     parser.add_argument('--lr_drop_epochs', default=None, type=int, nargs='+')
     parser.add_argument('--clip_max_norm', default=0.1, type=float,
                         help='gradient clipping max norm')
+    parser.add_argument('--val_freq', default=2, type=int)
 
     parser.add_argument('--sgd', action='store_true') 
+    parser.add_argument('--log_display_freq', default=1000, type=int)
+    parser.add_argument('--exp_name', default='', help="use_time makes the name date_like format") 
 
     # Variants of Deformable DETR
     parser.add_argument('--with_box_refine', default=False, action='store_true')
@@ -121,10 +125,13 @@ def get_args_parser():
     parser.add_argument('--ava_ds_rate', default=8, type=int)
     parser.add_argument('--ava_num_classes', default=80, type=int)
     parser.add_argument('--ava_last_stride', action='store_true')
+    
     parser.add_argument('--remove_difficult', action='store_true')
 
     parser.add_argument('--output_dir', default='',
                         help='path where to save, empty for no saving')
+    parser.add_argument('--log_output_dir', default='',
+                        help='path where to save, empty for no saving')    
     parser.add_argument('--device', default='cuda',
                         help='device to use for training / testing')
     parser.add_argument('--seed', default=42, type=int)
@@ -139,6 +146,7 @@ def get_args_parser():
     parser.add_argument('--dataset_type', default='original')
     parser.add_argument('--eval_types', default='')
     parser.add_argument('--visualize', default='')
+    parser.add_argument('--eval_only', action='store_false')
 
     # multi-frame
     parser.add_argument('--num_frames', default=1, type=int, help='number of frames')
@@ -160,6 +168,9 @@ def main(args):
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
+    if utils.get_local_rank():
+        tb_logdir = utils.build_log_dir(args)
+        writer = SummaryWriter(log_dir=tb_logdir)
 
     model, criterion, postprocessors = build_model(args)
     
@@ -263,7 +274,7 @@ def main(args):
             args.start_epoch = checkpoint['epoch'] + 1
     
     elif args.pretrain_weights is not None:
-        print('load weight from pretrain weight:',args.pretrain_weights)
+        print('load weight from pretrain weight:', args.pretrain_weights)
         checkpoint = torch.load(args.pretrain_weights, map_location='cpu')['model']
         if not args.jointfinetune:
             print('delete all class embedding ')
@@ -305,8 +316,6 @@ def main(args):
                     'args': args,
                 }, checkpoint_path)
 
-     
-
         if (epoch + 1) % 1 == 0 and args.eval_types == 'coco':
             test_stats, coco_evaluator = evaluate(model, criterion, postprocessors,
                                                                    data_loader_val, base_ds, device, args)
@@ -329,7 +338,12 @@ def main(args):
                         for name in filenames:
                             torch.save(coco_evaluator.coco_eval["segm"].eval,
                                     output_dir / "eval" / name)
+                            
+        elif (epoch + 1) % args.val_freq == 0 and args.eval_types == 'ava' or epoch == args.epochs -1 :
+            validate_ava_detection(args, model, criterion, postprocessors, data_loader_val, epoch, writer)
 
+    if writer is not None:
+        writer.close()
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
