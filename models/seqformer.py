@@ -126,10 +126,13 @@ class DeformableDETR(nn.Module):
         """
         if not isinstance(samples, NestedTensor):
             samples = nested_tensor_from_tensor_list(samples)
-            
+        # print("samples.tensors.shape: ", samples.tensors.shape)
+        # print("samples.mask.shape: ", samples.mask.shape)
+        # print("len(features): ", len(features))           
         features, pos = self.backbone(samples)
-        print("features.shape: ", features[0].tensors.shape)
-        print("len(features): ", len(features))
+        # print("mask.shape: ", features[2].mask.shape)
+        # print("features.shape: ", features[2].tensors.shape)
+        # print("len(features): ", len(features))
         srcs = []
         masks = []
         poses = []
@@ -139,24 +142,28 @@ class DeformableDETR(nn.Module):
             # pos: [nf*N, C, H_p, W_p]
             src, mask = feat.decompose() 
             src_proj_l = self.input_proj[l](src)    # src_proj_l: [nf*N, C, Hi, Wi]
-            
+
             # src_proj_l -> [nf, N, C, Hi, Wi]
             n,c,h,w = src_proj_l.shape
-            src_proj_l = src_proj_l.reshape(n//self.num_frames, self.num_frames, c, h, w).permute(1,0,2,3,4)
-            
+            src_proj_l = src_proj_l.reshape(n//self.num_frames, self.num_frames, c, h, w)
+            # src_proj_l = src_proj_l.reshape(n//self.num_frames, self.num_frames, c, h, w).permute(1,0,2,3,4)
             # mask -> [nf, N, Hi, Wi]
-            mask = mask.reshape(n//self.num_frames, self.num_frames, h, w).permute(1,0,2,3)
-            
+            mask = mask.reshape(n//self.num_frames, self.num_frames, h, w)
+            # mask = mask.reshape(n//self.num_frames, self.num_frames, h, w).permute(1,0,2,3)
             # pos -> [nf, N, Hi, Wi]
             np, cp, hp, wp = pos[l+1].shape
-            pos_l = pos[l+1].reshape(np//self.num_frames, self.num_frames, cp, hp, wp).permute(1,0,2,3,4)
-            for n_f in range(self.num_frames):
-                srcs.append(src_proj_l[n_f])
-                masks.append(mask[n_f])
-                poses.append(pos_l[n_f])
-                assert mask is not None
+            pos_l = pos[l+1].reshape(np//self.num_frames, self.num_frames, cp, hp, wp)
+            # pos_l = pos[l+1].reshape(np//self.num_frames, self.num_frames, cp, hp, wp).permute(1,0,2,3,4)
+            srcs.append(src_proj_l)
+            masks.append(mask)
+            poses.append(pos_l)
+            # for n_f in range(self.num_frames):
+            #     srcs.append(src_proj_l[n_f])
+            #     masks.append(mask[n_f])
+            #     poses.append(pos_l[n_f])
+            #     assert mask is not None
 
-        if self.num_feature_levels > (len(features) - 1):
+        if self.num_feature_levels > (len(features) - 1): # the last feature map is a projection of the previous map
             _len_srcs = len(features) - 1
             for l in range(_len_srcs, self.num_feature_levels):
                 if l == _len_srcs:
@@ -165,19 +172,27 @@ class DeformableDETR(nn.Module):
                     src = self.input_proj[l](srcs[-1])
                 m = samples.mask    # [nf*N, H, W]
                 mask = F.interpolate(m[None].float(), size=src.shape[-2:]).to(torch.bool)[0]
+                mask = mask.unsqueeze(1).repeat(1,samples.tensors.shape[2],1,1) # for ava dataset
+                mask = mask.permute(1,0,2,3).flatten(0,1)
+                # print("src.shape: ", src.shape)
+                # print("mask.shape: ", mask.shape)
                 pos_l = self.backbone[1](NestedTensor(src, mask)).to(src.dtype)
-                
                 # src -> [nf, N, C, H, W]
                 n, c, h, w = src.shape
-                src = src.reshape(n//self.num_frames, self.num_frames, c, h, w).permute(1,0,2,3,4)
-                mask = mask.reshape(n//self.num_frames, self.num_frames, h, w).permute(1,0,2,3)
+                src = src.reshape(n//self.num_frames, self.num_frames, c, h, w)
+                # src = src.reshape(n//self.num_frames, self.num_frames, c, h, w).permute(1,0,2,3,4)
+                mask = mask.reshape(n//self.num_frames, self.num_frames, h, w)
+                # mask = mask.reshape(n//self.num_frames, self.num_frames, h, w).permute(1,0,2,3)
                 np, cp, hp, wp = pos_l.shape
-                pos_l = pos_l.reshape(np//self.num_frames, self.num_frames, cp, hp, wp).permute(1,0,2,3,4)
-
-                for n_f in range(self.num_frames):
-                    srcs.append(src[n_f])
-                    masks.append(mask[n_f])
-                    poses.append(pos_l[n_f])
+                pos_l = pos_l.reshape(np//self.num_frames, self.num_frames, cp, hp, wp)
+                # pos_l = pos_l.reshape(np//self.num_frames, self.num_frames, cp, hp, wp).permute(1,0,2,3,4)
+                srcs.append(src)
+                masks.append(mask)
+                poses.append(pos_l)
+                # for n_f in range(self.num_frames):
+                #     srcs.append(src[n_f])
+                #     masks.append(mask[n_f])
+                #     poses.append(pos_l[n_f])
 
         query_embeds = None
         query_embeds = self.query_embed.weight

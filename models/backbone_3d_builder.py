@@ -75,10 +75,10 @@ class Backbone(nn.Module):
             xs = self.body(tensor_list.tensors) #interm layer features
             # xs_orig = xs
         # if self.ds: xs = self.avg_pool(xs)
-        # print(xs['0'].shape)
-        # print(xs['1'].shape)
-        # print(xs['2'].shape)
-        # print(xs['3'].shape)
+        print(xs['0'].shape)
+        print(xs['1'].shape)
+        print(xs['2'].shape)
+        print(xs['3'].shape)
         # bs, ch, t, w, h = xs.shape
         # if self.ds:
         #     if self.temporal_ds_strategy == 'avg' or self.temporal_ds_strategy == 'max':
@@ -104,8 +104,11 @@ class Backbone(nn.Module):
             m = tensor_list.mask
             assert m is not None
             mask = F.interpolate(m[None].float(), size=x.shape[-2:]).to(torch.bool)[0]
+            mask = mask.unsqueeze(1).repeat(1,x.shape[2],1,1)
+            # print("mask shape: ", mask.shape)
             bs, c, t, h, w = x.shape
-            x = x.reshape(bs, c*t, h, w)
+            x = x.permute(2,0,1,3,4).reshape(t*bs, c, h, w)
+            mask = mask.permute(1,0,2,3).reshape(t*bs, h, w)
             out[name] = NestedTensor(x, mask)
         return out #, pos #, xs_orig
 

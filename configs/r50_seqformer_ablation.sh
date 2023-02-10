@@ -12,7 +12,7 @@ python3 -u main.py \
     --coco_path ../coco \
     --ytvis_path ../ytvis \
     --num_queries 300 \
-    --num_frames 5 \
+    --num_frames 32 \
     --with_box_refine \
     --rel_coord \
     --backbone csn50 \
