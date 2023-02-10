@@ -115,8 +115,7 @@ class DeformableTransformer(nn.Module):
 
         # prepare input for decoder
         bs, nf,  _, c = memory.shape
-       
-            
+        
         query_embed, tgt = torch.split(query_embed, c, dim=1)
         query_embed = query_embed.unsqueeze(0).expand(bs, -1, -1)
         tgt = tgt.unsqueeze(0).expand(bs, -1, -1)
@@ -303,8 +302,6 @@ class DeformableTransformerDecoderLayer(nn.Module):
             tgt2, tgt2_box, sampling_locations, attention_weights = self.cross_attn(self.with_pos_embed(tgt, query_pos), 
                                 self.with_pos_embed_multf(tgt_box, query_pos),
                                 reference_points, src, src_spatial_shapes, level_start_index, src_padding_mask)
-        
-        
         if len(tgt_box.shape) == 3: 
             tgt_box = tgt_box.unsqueeze(1) + self.dropout1_box(tgt2_box)
         else:

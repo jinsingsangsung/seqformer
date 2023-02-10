@@ -40,17 +40,13 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     print_freq = 4000
 
     prefetcher = data_prefetcher(data_loader, device, prefetch=True)
-    try:
-        samples, targets = prefetcher.next()
-    except:
-        samples, targets, batch_id = prefetcher.next()
+
+    samples, targets = prefetcher.next()
 
     for _ in metric_logger.log_every(range(len(data_loader)), print_freq, header):
 
  
-        # outputs, loss_dict = model(samples, targets, criterion, train=True)
-        outputs, loss_dict = model(samples, targets, criterion)
-
+        outputs, loss_dict = model(samples, targets, criterion, train=True)
         weight_dict = criterion.weight_dict
         losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
 

@@ -109,7 +109,7 @@ class DeformableDETR(nn.Module):
             self.transformer.decoder.bbox_embed = None
         
 
-    def forward(self, samples: NestedTensor, targets, criterion):
+    def forward(self, samples: NestedTensor, targets, criterion, train=True):
         """ The forward expects a NestedTensor, which consists of:
                - samples.tensor: batched images, of shape [num_frames x 3 x H x W]
                - samples.mask: a binary mask of shape [num_frames x H x W], containing 1 on padded pixels
@@ -196,7 +196,7 @@ class DeformableDETR(nn.Module):
 
         query_embeds = None
         query_embeds = self.query_embed.weight
-        hs, memory, init_reference, inter_references, enc_outputs_class, enc_outputs_coord_unact = self.transformer(srcs, masks, poses, query_embeds)
+        hs, hs_box, memory, init_reference, inter_references, enc_outputs_class, _, enc_outputs_coord_unact = self.transformer(srcs, masks, poses, query_embeds)
 
         outputs_classes = []
         outputs_coords = []
@@ -207,7 +207,11 @@ class DeformableDETR(nn.Module):
                 reference = inter_references[lvl - 1]
             reference = inverse_sigmoid(reference)
             outputs_class = self.class_embed[lvl](hs[lvl])
-            tmp = self.bbox_embed[lvl](hs[lvl])
+            tmp = self.bbox_embed[lvl](hs_box[lvl])
+            # tmp = self.bbox_embed[lvl](hs[lvl])
+            # prev tmp.shape: bs, 300, 4
+            # current tmp.shape: bs, 32, 300, 4
+            # reference: bs, 32, 300, 4
             if reference.shape[-1] == 4:
                 tmp += reference
             else:
@@ -218,13 +222,20 @@ class DeformableDETR(nn.Module):
             outputs_coords.append(outputs_coord)
         outputs_class = torch.stack(outputs_classes)
         outputs_coord = torch.stack(outputs_coords)
+        print("outputs_class.shape: ", outputs_class.shape)
+        print("outputs_coord.shape: ", outputs_coord.shape)
 
         out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
         if self.aux_loss:
             out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord)
-
+        
+        if train:
+            loss_dict = criterion(out, targets, enc_outputs_class, enc_outputs_coord_unact)
+        else:
+            with torch.no_grad():
+                loss_dict = criterion(out, targets, enc_outputs_class, enc_outputs_coord_unact)
       
-        return out
+        return out, loss_dict
 
     @torch.jit.unused
     def _set_aux_loss(self, outputs_class, outputs_coord):
@@ -266,6 +277,9 @@ class SetCriterion(nn.Module):
         """
         assert 'pred_logits' in outputs
         src_logits = outputs['pred_logits']
+        print("indices.shape: ", indices.shape)
+        print("targets[0]['labels'].shape: ", targets[0]["labels"].shape)
+        idx = self._get_src_permutation_idx(indices)
 
         idx = self._get_src_permutation_idx(indices)
         target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)])
@@ -309,7 +323,7 @@ class SetCriterion(nn.Module):
         
   
         valid_ratios = self.valid_ratios
-        idx = self._get_src_permutation_idx(indices)
+
         src_boxes = outputs['pred_boxes'].permute(0,2,1,3)[idx]  # [selected_inst, nf, 4]
         num_insts,nf = src_boxes.shape[:2]
         tgt_bbox = torch.cat([v["boxes"] for v in targets])

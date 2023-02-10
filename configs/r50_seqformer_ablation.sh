@@ -7,7 +7,7 @@ python3 -u main.py \
     --epochs 12 \
     --lr 2e-4 \
     --lr_drop 2 10\
-    --batch_size 2 \
+    --batch_size 1 \
     --num_workers 2 \
     --coco_path ../coco \
     --ytvis_path ../ytvis \

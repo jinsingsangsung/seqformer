@@ -84,7 +84,7 @@ def get_args_parser():
     parser.add_argument('--mask_out_stride', default=4, type=int)
 
     # Loss
-    parser.add_argument('--no_aux_loss', dest='aux_loss', action='store_false',
+    parser.add_argument('--no_aux_loss', dest='aux_loss', action='store_true',  # 'store_false"
                         help="Disables auxiliary decoding losses (loss at each layer)")
 
     # * Matcher
