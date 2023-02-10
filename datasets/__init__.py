@@ -13,7 +13,7 @@ from .coco import build as build_coco
 from .coco2seq import build as build_seq_coco
 from .concat_dataset import build as build_joint
 from .ytvos import build as build_ytvs
-
+from .ava_datasets.ava_frame import build_dataloader
 
 
 def get_coco_api_from_dataset(dataset):
@@ -23,7 +23,7 @@ def get_coco_api_from_dataset(dataset):
     if isinstance(dataset, CocoDetection):
         return dataset.coco
     if isinstance(dataset, YTVOSDataset):
-        return dataset.ytvos
+        return dataset
 
 
 ### build_type only works for YoutubeVIS ###
@@ -37,6 +37,8 @@ def build_dataset(image_set, args):
         return build_seq_coco(image_set, args)
     if args.dataset_file == 'jointcoco':
         return build_joint(image_set, args)
+    if args.dataset_file == 'ava':
+        return build_dataloader(image_set, args)
 
         
     raise ValueError(f'dataset {args.dataset_file} not supported')

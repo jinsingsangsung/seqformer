@@ -178,13 +178,13 @@ def main():
         current_env["LOCAL_RANK"] = str(local_rank)
 
         cmd = [args.training_script] + args.training_script_args
-
-        process = subprocess.Popen(cmd, env=current_env)
+        print("" ".join(cmd): ", " ".join(cmd))
+        process = subprocess.Popen(" ".join(cmd), env=current_env)
         processes.append(process)
 
     for process in processes:
         process.wait()
-        if process.returncode != 0:
+        if process.returncode != 0: #to check if running command works without significant error
             raise subprocess.CalledProcessError(returncode=process.returncode,
                                                 cmd=process.args)
 

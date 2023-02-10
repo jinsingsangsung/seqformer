@@ -109,7 +109,7 @@ class DeformableDETR(nn.Module):
             self.transformer.decoder.bbox_embed = None
         
 
-    def forward(self, samples: NestedTensor):
+    def forward(self, samples: NestedTensor, targets, criterion):
         """ The forward expects a NestedTensor, which consists of:
                - samples.tensor: batched images, of shape [num_frames x 3 x H x W]
                - samples.mask: a binary mask of shape [num_frames x H x W], containing 1 on padded pixels
@@ -124,12 +124,12 @@ class DeformableDETR(nn.Module):
                - "aux_outputs": Optional, only returned when auxilary losses are activated. It is a list of
                                 dictionnaries containing the two above keys for each decoder layer.
         """
-   
         if not isinstance(samples, NestedTensor):
             samples = nested_tensor_from_tensor_list(samples)
-        
+            
         features, pos = self.backbone(samples)
-       
+        print("features.shape: ", features[0].tensors.shape)
+        print("len(features): ", len(features))
         srcs = []
         masks = []
         poses = []
@@ -518,7 +518,13 @@ class MLP(nn.Module):
 
 
 def build(args):    
-    num_classes = 20 if args.dataset_file != 'coco' else 91
+    if args.dataset_file == 'ava':
+        num_classes = 80
+    elif args.dataset_file == 'coco':
+        num_classes = 91
+    else:
+        num_classes = 20
+    # num_classes = 20 if args.dataset_file != 'coco' else 91
     if args.dataset_file == "coco_panoptic":
         num_classes = 250
     if args.dataset_file == 'YoutubeVIS' or args.dataset_file == 'jointcoco' or args.dataset_file == 'Seq_coco':

@@ -24,6 +24,7 @@ from util.misc import NestedTensor, is_main_process
 
 from .position_encoding import build_position_encoding
 from .x101_64d import resnext101_64x4d
+from .backbone_3d_builder import build_3d_backbone
 
 class FrozenBatchNorm2d(torch.nn.Module):
     """
@@ -84,7 +85,12 @@ class BackboneBase(nn.Module):
         self.body = IntermediateLayerGetter(backbone, return_layers=return_layers)
 
     def forward(self, tensor_list: NestedTensor):
-        xs = self.body(tensor_list.tensors)
+        try:
+            xs = self.body(tensor_list.tensors)
+        except:
+            bs, c, t, h, w =tensor_list.tensors.shape
+            tensor_list.tensors = tensor_list.tensors.permute(0,2,1,3,4).contiguous().reshape(bs*t, c, h, w)
+            xs = self.body(tensor_list.tensors)
         out: Dict[str, NestedTensor] = {}
         for name, x in xs.items():
             m = tensor_list.mask
@@ -135,10 +141,13 @@ class Joiner(nn.Sequential):
 
 
 def build_backbone(args):
-    position_embedding = build_position_encoding(args)
-    train_backbone = args.lr_backbone > 0
-    return_interm_layers = args.masks or (args.num_feature_levels > 1)
-    backbone = Backbone(args.backbone, train_backbone, return_interm_layers, args.dilation)
-    model = Joiner(backbone, position_embedding)
-    return model
+    if 'csn' in args.backbone:
+        return build_3d_backbone(args)
+    else:
+        position_embedding = build_position_encoding(args)
+        train_backbone = args.lr_backbone > 0
+        return_interm_layers = args.masks or (args.num_feature_levels > 1)
+        backbone = Backbone(args.backbone, train_backbone, return_interm_layers, args.dilation)
+        model = Joiner(backbone, position_embedding)
+        return model
 

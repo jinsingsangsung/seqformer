@@ -10,10 +10,10 @@ set -x
 
 GPUS=$1
 RUN_COMMAND=${@:2}
-if [ $GPUS -lt 8 ]; then
+if [ $GPUS -lt 4 ]; then
     GPUS_PER_NODE=${GPUS_PER_NODE:-$GPUS}
 else
-    GPUS_PER_NODE=${GPUS_PER_NODE:-8}
+    GPUS_PER_NODE=${GPUS_PER_NODE:-4}
 fi
 MASTER_ADDR=${MASTER_ADDR:-"127.0.0.1"}
 MASTER_PORT=${MASTER_PORT:-"29501"}

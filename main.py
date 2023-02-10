@@ -108,6 +108,19 @@ def get_args_parser():
     parser.add_argument('--coco_path', default='../coco', type=str)
     parser.add_argument('--ytvis_path', default='../ytvis', type=str)
     parser.add_argument('--coco_panoptic_path', type=str)
+    parser.add_argument('--ava_path', default='../datasets/frames/{}', type=str)
+    parser.add_argument('--ava_anno_path', default='/assets/ava_{}_v21.json', type=str)
+    parser.add_argument('--ava_frame_rate', default=2, type=int)
+    parser.add_argument('--ava_temp_len', default=32, type=int)
+    parser.add_argument('--ava_img_reshape_size', default=288, type=int)
+    parser.add_argument('--ava_img_size', default=256, type=int)
+    parser.add_argument('--ava_train_lr_backbone', default=1e-5, type=float)
+    parser.add_argument('--ava_dim_feedforward', default=2048, type=float)
+    parser.add_argument('--ava_single_frame', action='store_true')
+    parser.add_argument('--ava_temporal_ds_strategy', default='decode', type=str, help="one of avg, max, decode")
+    parser.add_argument('--ava_ds_rate', default=8, type=int)
+    parser.add_argument('--ava_num_classes', default=80, type=int)
+    parser.add_argument('--ava_last_stride', action='store_true')
     parser.add_argument('--remove_difficult', action='store_true')
 
     parser.add_argument('--output_dir', default='',
@@ -250,10 +263,10 @@ def main(args):
             args.start_epoch = checkpoint['epoch'] + 1
     
     elif args.pretrain_weights is not None:
-        print('load weigth from pretrain weight:',args.pretrain_weights)
+        print('load weight from pretrain weight:',args.pretrain_weights)
         checkpoint = torch.load(args.pretrain_weights, map_location='cpu')['model']
         if not args.jointfinetune:
-            print('delet all class embedding ')
+            print('delete all class embedding ')
             del_list = []
             for k,v in checkpoint.items():
                 if 'detr.class_embed' in k:
