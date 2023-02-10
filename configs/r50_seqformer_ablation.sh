@@ -17,6 +17,7 @@ python3 -u main.py \
     --rel_coord \
     --backbone csn50 \
     --output_dir csn50_ablation \
+    --set_cost_class 12 \
     # --masks \
     # --pretrain_weights \
 

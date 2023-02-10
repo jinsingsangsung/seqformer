@@ -196,10 +196,14 @@ class DeformableDETR(nn.Module):
 
         query_embeds = None
         query_embeds = self.query_embed.weight
-        hs, hs_box, memory, init_reference, inter_references, enc_outputs_class, _, enc_outputs_coord_unact = self.transformer(srcs, masks, poses, query_embeds)
+        hs, hs_box, memory, init_reference, inter_references, inter_samples, enc_outputs_class, valid_ratios = self.transformer(srcs, masks, poses, query_embeds)
+        valid_ratios = valid_ratios[: 0]
 
+        outputs = {}
         outputs_classes = []
         outputs_coords = []
+        indices_list = []
+
         for lvl in range(hs.shape[0]):
             if lvl == 0:
                 reference = init_reference
@@ -209,8 +213,7 @@ class DeformableDETR(nn.Module):
             outputs_class = self.class_embed[lvl](hs[lvl])
             tmp = self.bbox_embed[lvl](hs_box[lvl])
             # tmp = self.bbox_embed[lvl](hs[lvl])
-            # prev tmp.shape: bs, 300, 4
-            # current tmp.shape: bs, 32, 300, 4
+            # tmp.shape: bs, 32, 300, 4
             # reference: bs, 32, 300, 4
             if reference.shape[-1] == 4:
                 tmp += reference
@@ -220,22 +223,65 @@ class DeformableDETR(nn.Module):
             outputs_coord = tmp.sigmoid()
             outputs_classes.append(outputs_class)
             outputs_coords.append(outputs_coord)
+            outputs_layer = {'pred_logits': outputs_class, 'pred_boxes': outputs_coord}
+
+            indices = criterion.matcher(outputs_layer, targets, self.num_frames, valid_ratios)
+            indices_list.append(indices)
+
+            reference_points, num_insts = [], []
+            for i, indice in enumerate(indices):
+                pred_i, tgt_j = indice
+                num_insts.append(len(pred_i))
+
+                # This is the image size after data augmentation (so as the gt boxes & masks)
+                
+                orig_h, orig_w = targets[i]['size']
+                scale_f = torch.stack([orig_w, orig_h], dim=0)
+                
+                ref_cur_f = reference[i].sigmoid()
+                ref_cur_f = ref_cur_f[..., :2]
+                ref_cur_f = ref_cur_f * scale_f[None,None, :] 
+                
+                reference_points.append(ref_cur_f[:,pred_i].unsqueeze(0))
+            reference_points = torch.cat(reference_points, dim=2)
+
         outputs_class = torch.stack(outputs_classes)
         outputs_coord = torch.stack(outputs_coords)
         print("outputs_class.shape: ", outputs_class.shape)
         print("outputs_coord.shape: ", outputs_coord.shape)
 
-        out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
-        if self.aux_loss:
-            out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord)
+        outputs["pred_logits"] = outputs_class[-1]
+        outputs["pred_boxes"] = outputs_coord[-1]
         
-        if train:
-            loss_dict = criterion(out, targets, enc_outputs_class, enc_outputs_coord_unact)
-        else:
-            with torch.no_grad():
-                loss_dict = criterion(out, targets, enc_outputs_class, enc_outputs_coord_unact)
-      
-        return out, loss_dict
+        if self.aux_loss:
+            outputs['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord)
+        
+        loss_dict = criterion(outputs, targets, indices_list, valid_ratios)
+        
+        if not train:
+            outputs['reference_points'] = inter_references[-2, :, :, :, :2]
+
+            bs, num_queries = outputs_class.size(1), outputs_class.size(3)
+            num_insts = [num_queries for i in range(bs)]
+
+            reference_points = []
+            for i, target in enumerate(targets):
+                orig_h, orig_w = target['size']
+                scale_f = torch.stack([orig_w, orig_h], dim=0)
+                ref_cur_f = outputs['reference_points'][i] * scale_f[None,None, :] 
+                reference_points.append(ref_cur_f.unsqueeze(0))
+            # import pdb;pdb.set_trace()
+            # reference_points: [1, N * num_queries, 2]
+            # mask_head_params: [1, N * num_queries, num_params]
+           
+            reference_points = torch.cat(reference_points, dim=2)
+
+            # outputs['pred_masks']: [bs, num_queries, num_frames, H/4, W/4]
+            
+            outputs['pred_boxes'] = outputs['pred_boxes'][:,0] 
+            outputs['reference_points'] = outputs['reference_points'][:,0]
+
+        return outputs, loss_dict
 
     @torch.jit.unused
     def _set_aux_loss(self, outputs_class, outputs_coord):
@@ -277,9 +323,6 @@ class SetCriterion(nn.Module):
         """
         assert 'pred_logits' in outputs
         src_logits = outputs['pred_logits']
-        print("indices.shape: ", indices.shape)
-        print("targets[0]['labels'].shape: ", targets[0]["labels"].shape)
-        idx = self._get_src_permutation_idx(indices)
 
         idx = self._get_src_permutation_idx(indices)
         target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)])
@@ -581,8 +624,8 @@ def build(args):
     )
     if args.masks:
         model = SeqFormer(model, freeze_detr=False, rel_coord=args.rel_coord)
-
-    matcher = build_matcher(args)
+    
+    matcher = build_matcher(args) if "ava" not in args.dataset_file else 
     
     weight_dict = {'loss_ce': args.cls_loss_coef, 'loss_bbox': args.bbox_loss_coef}
     weight_dict['loss_giou'] = args.giou_loss_coef
