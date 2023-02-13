@@ -516,9 +516,8 @@ def accuracy_sigmoid(output, target):
     k = 0
     for n in range(target.shape[0]):
         t = target[n,:]
-
-        labels = t.nonzero().t()[0]
-
+        # labels = t.nonzero().t()[0]
+        labels = torch.nonzero(t, as_tuple=False).t()[0]
         maxk = len(labels)
 
         _, pred = output[n,:].topk(maxk, 0, True, True)

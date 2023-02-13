@@ -16,7 +16,7 @@ python3 -u main.py \
     --with_box_refine \
     --rel_coord \
     --backbone csn50 \
-    --output_dir csn50_ablation \
+    --output_dir /mnt/video-nfs5/users/jinsung/results/seqformer/csn50_ablation \
     --log_output_dir csn50_ablation_log \
     --set_cost_class 12 \
     --eval_types ava

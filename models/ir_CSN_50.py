@@ -329,7 +329,7 @@ def build_CSN(args):
     model = build_model(n_classes=args.ava_num_classes,
                         sample_size=args.ava_img_size,
                         sample_duration=args.ava_temp_len,
-                        pretrain_path='/pretrain_weights/irCSN_50_ft_kinetics_from_ig65m_f233743920.mat',
+                        pretrain_path='../pretrain_weights/irCSN_50_ft_kinetics_from_ig65m_f233743920.mat',
                         load_fc=False,
                         load_pretrain=True,
                         use_affine=False,
