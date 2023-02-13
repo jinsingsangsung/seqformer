@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from tensorboardX import SummaryWriter
+# from tensorboardX import SummaryWriter
 import datasets
 import util.misc as utils
 import datasets.samplers as samplers
@@ -168,9 +168,9 @@ def main(args):
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
-    if utils.get_local_rank():
-        tb_logdir = utils.build_log_dir(args)
-        writer = SummaryWriter(log_dir=tb_logdir)
+    # if utils.get_local_rank():
+    #     tb_logdir = utils.build_log_dir(args)
+    #     writer = SummaryWriter(log_dir=tb_logdir)
 
     model, criterion, postprocessors = build_model(args)
     
@@ -298,10 +298,10 @@ def main(args):
         if args.distributed:
             sampler_train.set_epoch(epoch)
 
-        train_stats = train_one_epoch(
-            model, criterion, data_loader_train, optimizer, device, epoch, args.clip_max_norm)
+        # train_stats = train_one_epoch(
+        #     model, criterion, data_loader_train, optimizer, device, epoch, args.clip_max_norm)
 
-        lr_scheduler.step()
+        # lr_scheduler.step()
         if args.output_dir:
             checkpoint_paths = [output_dir / 'checkpoint.pth']
             # extra checkpoint before LR drop and every 2 epochs
@@ -315,7 +315,7 @@ def main(args):
                     'epoch': epoch,
                     'args': args,
                 }, checkpoint_path)
-
+        
         if (epoch + 1) % 1 == 0 and args.eval_types == 'coco':
             test_stats, coco_evaluator = evaluate(model, criterion, postprocessors,
                                                                    data_loader_val, base_ds, device, args)
@@ -340,10 +340,11 @@ def main(args):
                                     output_dir / "eval" / name)
                             
         elif (epoch + 1) % args.val_freq == 0 and args.eval_types == 'ava' or epoch == args.epochs -1 :
-            validate_ava_detection(args, model, criterion, postprocessors, data_loader_val, epoch, writer)
+            print("evaluating...")
+            validate_ava_detection(args, model, criterion, postprocessors, data_loader_val, epoch, device)
 
-    if writer is not None:
-        writer.close()
+    # if writer is not None:
+    #     writer.close()
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))

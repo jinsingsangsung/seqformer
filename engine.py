@@ -13,6 +13,8 @@ import cv2
 import numpy as np
 import json
 import copy
+import requests
+import traceback
 
 import glob
 import time
@@ -86,7 +88,23 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(grad_norm=grad_total_norm)
         samples, targets = prefetcher.next()
-     
+
+    metrics_data = json.dumps({
+        '@epoch': epoch,
+        '@step': epoch, # actually epoch
+        '@loss': metric_logger.loss.value,
+        '@class_error': metric_logger.class_error.value,
+        '@lr': metric_logger.lr.value,
+        '@grad_norm': metric_logger.grad_norm.value,
+    })
+
+    try:
+        # Report JSON data to the NSML metric API server with a simple HTTP POST request.
+        requests.post(os.environ['NSML_METRIC_API'], data=metrics_data)
+    except requests.exceptions.RequestException:
+        # Sometimes, the HTTP request might fail, but the training process should not be stopped.
+        traceback.print_exc()    
+
     torch.cuda.empty_cache()
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
@@ -199,7 +217,7 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, arg
 
 
 @torch.no_grad()
-def validate_ava_detection(args, model, criterion, postprocessors, data_loader, epoch, writer):
+def validate_ava_detection(args, model, criterion, postprocessors, data_loader, epoch, device):
 
     batch_time = utils.AverageMeter()
     data_time = utils.AverageMeter()
@@ -217,12 +235,13 @@ def validate_ava_detection(args, model, criterion, postprocessors, data_loader, 
     buff_output = []
     buff_anno = []
     buff_id = []
-    buff_binary = []
+    # buff_binary = []
 
     buff_GT_label = []
     buff_GT_anno = []
     buff_GT_id = []
-    if utils.get_local_rank == 0:
+
+    if utils.get_local_rank() == 0:
         tmp_path = "{}/{}".format(args.output_dir, "results")
         if not os.path.exists(tmp_path): os.makedirs(tmp_path)
         tmp_dirs_ = glob.glob("{}/{}/*.txt".format(args.output_dir, "results"))
@@ -233,9 +252,8 @@ def validate_ava_detection(args, model, criterion, postprocessors, data_loader, 
 
     for idx, data in enumerate(data_loader):
         data_time.update(time.time() - end)
-
         # for samples, targets in metric_logger.log_every(data_loader, print_freq, epoch, ddp_params, writer, header):
-        device = "cuda:" + str(utils.get_local_rank)
+        # device = "cuda:" + str(utils.get_local_rank())
         samples = data[0]
         targets = data[1]
 
@@ -248,26 +266,27 @@ def validate_ava_detection(args, model, criterion, postprocessors, data_loader, 
 
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
-        outputs = model(samples)
-
-        loss_dict = criterion(outputs, targets)
+        # outputs = model(samples)
+        outputs, loss_dict = model(samples, targets, criterion, train=False)
+        # import pdb; pdb.set_trace()
+        # loss_dict = criterion(outputs, targets)
 
         weight_dict = criterion.weight_dict
 
         orig_target_sizes = torch.stack([t["size"] for t in targets], dim=0)
-        scores, boxes, output_b = postprocessors['bbox'](outputs, orig_target_sizes)
+        scores, boxes = postprocessors['bbox'](outputs, orig_target_sizes)
         for bidx in range(scores.shape[0]):
             frame_id = batch_id[bidx][0]
             key_pos = batch_id[bidx][1]
 
             buff_output.append(scores[bidx])
             buff_anno.append(boxes[bidx])
-            buff_binary.append(output_b[bidx])
 
             for l in range(args.num_queries):
                 buff_id.extend([frame_id])
 
-            raw_idx = (targets[bidx]["raw_boxes"][:, 1] == key_pos).nonzero().squeeze()
+            # raw_idx = (targets[bidx]["raw_boxes"][:, 1] == key_pos).nonzero().squeeze()
+            raw_idx = torch.nonzero((targets[bidx]["raw_boxes"][:, 1] == key_pos), as_tuple=False).squeeze()
 
             val_label = targets[bidx]["labels"][raw_idx]
             val_label = val_label.reshape(-1, val_label.shape[-1])
@@ -288,8 +307,8 @@ def validate_ava_detection(args, model, criterion, postprocessors, data_loader, 
 
         batch_time.update(time.time() - end)
         end = time.time()
-        if utils.get_local_rank == 0:
-            if idx % args.log_display_freq == 0:
+        if utils.get_local_rank() == 0:
+            if idx % args.log_display_freq == 0 or idx == len(data_loader) - 1:
                 print_string = 'Epoch: [{0}][{1}/{2}]'.format(epoch, idx + 1, len(data_loader))
                 print(print_string)
                 print_string = 'data_time: {data_time:.3f}, batch time: {batch_time:.3f}'.format(
@@ -324,13 +343,12 @@ def validate_ava_detection(args, model, criterion, postprocessors, data_loader, 
                 print(loss_dict_reduced)
                 exit(1)
             if idx % args.log_display_freq == 0:
-                print_string = 'class_error: {class_error:.3f}, loss: {loss:.3f}, loss_bbox: {loss_bbox:.3f}, loss_giou: {loss_giou:.3f}, loss_ce: {loss_ce:.3f}, loss_ce_b: {loss_ce_b:.3f}'.format(
+                print_string = 'class_error: {class_error:.3f}, loss: {loss:.3f}, loss_bbox: {loss_bbox:.3f}, loss_giou: {loss_giou:.3f}, loss_ce: {loss_ce:.3f}'.format(
                     class_error=class_err.avg,
                     loss=losses_avg.avg,
                     loss_bbox=losses_box.avg,
                     loss_giou=losses_giou.avg,
                     loss_ce=losses_ce.avg,
-                    loss_ce_b=losses_ce_b.avg,
                     # cardinality_error=loss_dict_reduced['cardinality_error']
                 )
                 print(print_string)
@@ -342,28 +360,27 @@ def validate_ava_detection(args, model, criterion, postprocessors, data_loader, 
             # print("len(buff_GT_label): ", len(np.concatenate(buff_GT_label, axis=0)))
             # print("len(buff_GT_anno): ", len(np.concatenate(buff_GT_anno, axis=0)))
 
-    if utils.get_local_rank == 0:
-        writer.add_scalar('val/class_error', class_err.avg, epoch)
-        writer.add_scalar('val/totall_loss', losses_avg.avg, epoch)
-        writer.add_scalar('val/loss_bbox', losses_box.avg, epoch)
-        writer.add_scalar('val/loss_giou', losses_giou.avg, epoch)
-        writer.add_scalar('val/loss_ce', losses_ce.avg, epoch)
-        writer.add_scalar('val/loss_ce_b', losses_ce_b.avg, epoch)
+    # if utils.get_local_rank() == 0:
+    #     writer.add_scalar('val/class_error', class_err.avg, epoch)
+    #     writer.add_scalar('val/total_loss', losses_avg.avg, epoch)
+    #     writer.add_scalar('val/loss_bbox', losses_box.avg, epoch)
+    #     writer.add_scalar('val/loss_giou', losses_giou.avg, epoch)
+    #     writer.add_scalar('val/loss_ce', losses_ce.avg, epoch)
 
     buff_output = np.concatenate(buff_output, axis=0)
     buff_anno = np.concatenate(buff_anno, axis=0)
-    buff_binary = np.concatenate(buff_binary, axis=0)
+    # buff_binary = np.concatenate(buff_binary, axis=0)
     buff_GT_label = np.concatenate(buff_GT_label, axis=0)
     buff_GT_anno = np.concatenate(buff_GT_anno, axis=0)
-    print(buff_output.shape, buff_anno.shape, buff_binary.shape, len(buff_id), buff_GT_anno.shape, buff_GT_label.shape, len(buff_GT_id))
+    print(buff_output.shape, buff_anno.shape, len(buff_id), buff_GT_anno.shape, buff_GT_label.shape, len(buff_GT_id))
     
     tmp_path = '{}/{}/{}.txt'
-    with open(tmp_path.format(args.output_dir, "results", utils.get_local_rank), 'w') as f:
+    with open(tmp_path.format(args.output_dir, "results", utils.get_local_rank()), 'w') as f:
         for x in range(len(buff_id)):
-            data = np.concatenate([buff_anno[x], buff_output[x], buff_binary[x]])
+            data = np.concatenate([buff_anno[x], buff_output[x]])
             f.write("{} {}\n".format(buff_id[x], data.tolist()))
     tmp_GT_path = '{}/{}/GT_{}.txt'
-    with open(tmp_path.format(args.output_dir, "results", utils.get_local_rank), 'w') as f:
+    with open(tmp_path.format(args.output_dir, "results", utils.get_local_rank()), 'w') as f:
         for x in range(len(buff_GT_id)):
             data = np.concatenate([buff_GT_anno[x], buff_GT_label[x]])
             f.write("{} {}\n".format(buff_GT_id[x], data.tolist()))
@@ -373,7 +390,7 @@ def validate_ava_detection(args, model, criterion, postprocessors, data_loader, 
     # aggregate files
     Map_ = 0
     # aggregate files
-    if utils.get_local_rank == 0:
+    if utils.get_local_rank() == 0:
         # read results
         evaluater = STDetectionEvaluater(args.output_dir, tiou_thresholds=[0.5], class_num=args.ava_num_classes)
         file_path_lst = [tmp_GT_path.format(args.output_dir, "results", x) for x in range(utils.get_world_size)]
@@ -385,8 +402,23 @@ def validate_ava_detection(args, model, criterion, postprocessors, data_loader, 
         print_string = 'mAP: {mAP:.5f}'.format(mAP=mAP[0])
         print(print_string)
         print(mAP)
-        writer.add_scalar('val/val_mAP_epoch', mAP[0], epoch)
+        # writer.add_scalar('val/val_mAP_epoch', mAP[0], epoch)
         Map_ = mAP[0]
+    metrics_data = json.dumps({
+        '@epoch': epoch,
+        '@step': epoch, # actually epoch
+        'val_class_error': class_err.avg,
+        'val_loss': losses_avg.avg,
+        'val_loss_giou': losses_giou.avg,
+        'val_loss_ce': losses_ce.avg,
+        'val_mAP': Map_        
+    })
+    try:
+        # Report JSON data to the NSML metric API server with a simple HTTP POST request.
+        requests.post(os.environ['NSML_METRIC_API'], data=metrics_data)
+    except requests.exceptions.RequestException:
+        # Sometimes, the HTTP request might fail, but the training process should not be stopped.
+        traceback.print_exc()    
 
     torch.distributed.barrier()
     time.sleep(30)
