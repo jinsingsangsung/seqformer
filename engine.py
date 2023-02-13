@@ -43,7 +43,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     metric_logger.add_meter('class_error', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
     metric_logger.add_meter('grad_norm', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
-    header = 'Epoch: [{}]'.format(epoch)
+    header = '(train) Epoch: [{}]'.format(epoch)
     print_freq = 4000
 
     prefetcher = data_prefetcher(data_loader, device, prefetch=True)
@@ -309,7 +309,7 @@ def validate_ava_detection(args, model, criterion, postprocessors, data_loader, 
         end = time.time()
         if utils.get_local_rank() == 0:
             if idx % args.log_display_freq == 0 or idx == len(data_loader) - 1:
-                print_string = 'Epoch: [{0}][{1}/{2}]'.format(epoch, idx + 1, len(data_loader))
+                print_string = '(val) Epoch: [{0}][{1}/{2}]'.format(epoch, idx + 1, len(data_loader))
                 print(print_string)
                 print_string = 'data_time: {data_time:.3f}, batch time: {batch_time:.3f}'.format(
                     data_time=data_time.val,
